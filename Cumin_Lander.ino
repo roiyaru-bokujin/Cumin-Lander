@@ -4,6 +4,8 @@
  - Init startup routine. Shows 00h00m00s until time is sent via bluetooth serial
  - Added different LED flashing modes depending on initialization state
  - Fixed counting jumps
+ - Added a visual battery voltage check on startup
+ - Added voltage monitoring every second & low voltage warning if <3.5V (Lower end for 14250 unprotected battery)
  
  Credit: Adapted from Mohit Bhoite's original Cumin Lander project
  *********************************************************************/
@@ -61,6 +63,7 @@ float currentTempC = 0.0;
 float currentHumi = 0.0;
 float currentPressure_hPa = 1013.25; 
 float currentAltitude_m = 0.0;
+float currentVbat = 0.0;
 
 // Non-Blocking Timing Variables
 unsigned long lastClockTickTime = 0;
@@ -334,6 +337,17 @@ void readAndStoreBMEData(void) {
       currentPressure_hPa = newPressure;
       currentAltitude_m = newAltitude;
   }
+
+  // --- NEW BATTERY LEVEL LOGIC ---
+  pinMode(VBAT_ENABLE, OUTPUT);
+  digitalWrite(VBAT_ENABLE, LOW); // Turn on the divider
+  delay(1); // Stabilization delay
+  
+  // Hardware multiplier for XIAO Sense (1M/510k divider)
+  currentVbat = (float)analogRead(PIN_VBAT) * (3.6 / 1024.0) * 2.96;
+  
+  digitalWrite(VBAT_ENABLE, HIGH); // Turn off the divider
+  // --- END BATTERY LEVEL LOGIC ---
 }
 
 void handleLEDFlashing(void) {
@@ -413,7 +427,15 @@ void updateAndDrawDisplay(void) {
   canvas.setFont();
   canvas.setTextSize(1);
   canvas.setCursor(0, 0);
-  canvas.print("/////");
+  //Dynamic header - shows voltage on startup for 5 seconds, then reverts to UI. Shows LOW if voltage is lower than 3.5V.
+  if (millis() < 5000) {
+      canvas.print(currentVbat, 2); canvas.print("V"); 
+  } else if (currentVbat < 3.5) {
+      if ((millis() / 1000) % 2 == 0) { canvas.print("  LOW"); } 
+      else { canvas.print(currentVbat, 2); canvas.print("V"); }
+  } else {
+      canvas.print("/////"); 
+  }
   
   canvas.setCursor(0, 15);
   canvas.print("  24H");
